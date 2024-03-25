@@ -418,10 +418,10 @@ void cw3::imageCallback(const sensor_msgs::PointCloud2ConstPtr &cloud_input_msg)
   }
 
   pcl::PCDWriter writer;
-  writer.write<pcl::PointXYZ>("/home/mhj/Desktop/image_data_cloud.pcd", *image_data_cloud_origin, false);
-  writer.write<pcl::PointXYZ>("/home/mhj/Desktop/image_data_cloud_no_plane.pcd", *image_data_cloud_no_plane, false);
+  // writer.write<pcl::PointXYZ>("/home/mhj/Desktop/image_data_cloud.pcd", *image_data_cloud_origin, false);
+  // writer.write<pcl::PointXYZ>("/home/mhj/Desktop/image_data_cloud_no_plane.pcd", *image_data_cloud_no_plane, false);
 
-  writer.write<pcl::PointXYZ>("/home/mhj/Desktop/image_data_cloud_downsize.pcd", *image_data_cloud_downsize, false);
+  // writer.write<pcl::PointXYZ>("/home/mhj/Desktop/image_data_cloud_downsize.pcd", *image_data_cloud_downsize, false);
   
   
 
@@ -685,8 +685,8 @@ void cw3::calOrientation(const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud, const
   sor.filter (*cloud_out);                  
     
   pcl::PCDWriter writer;
-  writer.write<pcl::PointXYZ>("/home/mhj/Desktop/no_plane_image_cloud.pcd", *cloud_out, false);  
-  writer.write<pcl::PointXYZ>("/home/mhj/Desktop/cloud_filtered.pcd", *cloud_filtered, false);  
+  // writer.write<pcl::PointXYZ>("/home/mhj/Desktop/no_plane_image_cloud.pcd", *cloud_out, false);  
+  // writer.write<pcl::PointXYZ>("/home/mhj/Desktop/cloud_filtered.pcd", *cloud_filtered, false);  
   
   
 
@@ -759,7 +759,7 @@ void cw3::calOrientation(const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud, const
   // while (!viewer->wasStopped()) {
   //     viewer->spinOnce();
   // }
-  pcl::io::savePCDFile("/home/mhj/Desktop/merged_cloud.pcd", *plane_removed_cloud);
+  // pcl::io::savePCDFile("/home/mhj/Desktop/merged_cloud.pcd", *plane_removed_cloud);
   
 
   ROS_INFO("===CALCULATED ANGLE: (%f)", (angle_new) * (180/pi_));
