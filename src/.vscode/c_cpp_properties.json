@@ -1,0 +1,30 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${default}",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+        "/home/mhj/catkin_ws/src/comp0129_s24_labs/devel/include/**",
+        "/opt/ros/noetic/include/**",
+        "/home/mhj/catkin_ws/src/comp0129_s24_labs/src/cw1_team_x/include/**",
+        "/home/mhj/catkin_ws/src/comp0129_s24_labs/src/cw3_team_x/include/**",
+        "/home/mhj/catkin_ws/src/comp0129_s24_labs/src/labs/moveit_solution/include/**",
+        "/home/mhj/catkin_ws/src/comp0129_s24_labs/src/labs/moveit_tutorial/include/**",
+        "/home/mhj/catkin_ws/src/comp0129_s24_labs/src/labs/obj_rec_tutorial/include/**",
+        "/home/mhj/catkin_ws/src/comp0129_s24_labs/src/labs/pcl_demo/include/**",
+        "/home/mhj/catkin_ws/src/comp0129_s24_labs/src/labs/pcl_tutorial/include/**",
+        "/home/mhj/catkin_ws/src/comp0129_s24_labs/src/realsense_gazebo_plugin/include/**",
+        "/home/mhj/catkin_ws/src/comp0129_s24_labs/src/labs/style_tutorial/include/**",
+        "/usr/include/**"
+      ],
+      "name": "ROS",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu11",
+      "cppStandard": "c++14"
+    }
+  ],
+  "version": 4
+}
