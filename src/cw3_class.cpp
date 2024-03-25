@@ -31,6 +31,8 @@ cw3::cw3(ros::NodeHandle nh)
   tf2::Quaternion q_result = q_x180deg * q_object;
   orientation = tf2::toMsg(q_result);
   ROS_INFO("cw3 class initialised");
+  add_plane();
+
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -53,7 +55,6 @@ cw3::t1_callback(cw3_world_spawner::Task1Service::Request &request,
   goal_point = request.goal_point;
   shape_type = request.shape_type;
   // add the plane as a collision
-  add_plane();
   // Execute movement 
   std::cout<<"===========object posi:"<<object_point.point.x<<", "<<object_point.point.y<<", "<<object_point.point.z<<std::endl;
 
@@ -116,25 +117,45 @@ geometry_msgs::Pose cw3::getPose(geometry_msgs::PointStamped target_point)
  */
 bool cw3::moveArm(geometry_msgs::Pose target_pose)
 {
-  // Step 1: Setup the target pose
-  ROS_INFO("moveArm: Setting pose target");
+  // // Step 1: Setup the target pose
+  // ROS_INFO("moveArm: Setting pose target");
+  // arm_group_.setPoseTarget(target_pose);
+
+  // // Step 2: Create a movement plan for the arm
+  // ROS_INFO("Attempting to plan the path");
+  // std::vector<geometry_msgs::Pose> waypoints;
+  // waypoints.push_back(target_pose);
+
+  // // 设置笛卡尔路径规划参数
+  // moveit_msgs::RobotTrajectory trajectory;
+  // const double jump_threshold = 0.005;
+  // const double eef_step = 0.01;
+  // bool success = arm_group_.computeCartesianPath(waypoints, eef_step, jump_threshold, trajectory);
+  // if (!success)
+  // {
+  //   ROS_WARN("Trajectory fail.");
+  // }
+  // // 执行路径规划
+  // moveit::planning_interface::MoveGroupInterface::Plan my_plan;
+  // my_plan.trajectory_ = trajectory;
+  // arm_group_.execute(my_plan);
+
+  // setup the target pose
+  ROS_INFO("Setting pose target");
   arm_group_.setPoseTarget(target_pose);
 
-  // Step 2: Create a movement plan for the arm
+  // create a movement plan for the arm
   ROS_INFO("Attempting to plan the path");
-  std::vector<geometry_msgs::Pose> waypoints;
-  waypoints.push_back(target_pose);
-
-  // 设置笛卡尔路径规划参数
-  moveit_msgs::RobotTrajectory trajectory;
-  const double jump_threshold = 0.0;
-  const double eef_step = 0.01;
-  double fraction = arm_group_.computeCartesianPath(waypoints, eef_step, jump_threshold, trajectory);
-
-  // 执行路径规划
   moveit::planning_interface::MoveGroupInterface::Plan my_plan;
-  my_plan.trajectory_ = trajectory;
-  arm_group_.execute(my_plan);
+  bool success = (arm_group_.plan(my_plan) ==
+    moveit::planning_interface::MoveItErrorCode::SUCCESS);
+
+  ROS_INFO("Visualising plan %s", success ? "" : "FAILED");
+
+  // execute the planned path
+  arm_group_.move();
+
+  return success;
 
   // moveit::planning_interface::MoveGroupInterface::Plan my_plan;
   // bool success = (arm_group_.plan(my_plan) ==
@@ -191,7 +212,6 @@ bool cw3::moveGripper(float width)
 
 bool cw3::pickObj(geometry_msgs::Pose pose)
 {
-  std::cout<<"````````````````````````````````PICK OBJECT: angle"<<angle<<std::endl;
   // set the desired grasping pose
   geometry_msgs::Pose grasp_pose;
   grasp_pose = pose;
@@ -208,56 +228,6 @@ bool cw3::pickObj(geometry_msgs::Pose pose)
   bool success = true;
   ROS_INFO("Begining pick operation");
   // move the arm above the object
-  std::cout<<"/";
-  success *= moveArm(approach_pose);
-  if (not success) 
-  {
-    ROS_ERROR("Moving arm to grasping pose failed");
-  }
-  // if (not success) 
-  // {
-  //   ROS_ERROR("Moving arm to grasping pose failed");
-  // }
-  
-  double angle_old;
-  
-  for (int i = 0; i < 8; i++)
-  {
-    if(shape_type != "cross")
-    {
-      std::cout<<"||||||||: "<<min_y_p<<","<<max_y_p<<","<<min_y_p - max_y_p<<std::endl;
-      std::cout<<"||||||||: "<<min_x_p<<","<<max_x_p<<","<<min_x_p - max_x_p<<","<<std::abs(min_x_p - max_x_p)<<std::endl;
-      // ros::Duration(5).sleep();
-
-      if ((std::abs(min_y_p - max_y_p) < 5.4*length && std::abs(min_x_p - max_x_p) < 5.4*length)&&(std::abs(min_y_p - max_y_p) > 4.95*length && std::abs(min_x_p - max_x_p) >4.95*length)) break;
-    }else{
-      std::cout<<"XXXXXXXXX: "<<min_y_p<<","<<max_y_p<<","<<min_y_p - max_y_p<<","<<(std::abs(min_y_p - max_y_p))<<std::endl;
-      std::cout<<"XXXXXXXXX: "<<min_x_p<<","<<max_x_p<<","<<min_x_p - max_x_p<<","<<(std::abs(min_x_p - max_x_p))<<std::endl;
-      // ros::Duration(5).sleep();
-
-      if ((std::abs(min_y_p - max_y_p) > 4.86*length && std::abs(min_y_p - max_y_p) < 5.1*length) && (std::abs(min_x_p - max_x_p) > 4.86*length && std::abs(min_x_p - max_x_p) < 5.1*length)) break;
-    }
-    angle_old = angle;
-    transform_matrix = tfTransform(target_frame, camera_frame);
-    sub_flag_task1 = true;
-    ros::Duration(0.1).sleep();
-    while(sub_flag_task1)
-    {
-      ros::Duration(0.1).sleep();
-    }
-    
-    approach_pose.orientation = getOrientation();
-    if (std::abs(angle_new) < 1e-4) break;
-    approach_pose.orientation = getOrientation();
-  //   std::cout<<"/";
-    success *= moveArm(approach_pose);
-    if (not success) 
-    {
-      ROS_ERROR("Moving arm to grasping pose failed");
-    }
-    std::cout<<"*************** std::abs(angle-angle_old) > angle_offset_/8"<<std::abs(angle-angle_old)<<","<<angle<<std::endl;
-  }
-  
   
   // open the gripper  
   success *= moveGripper(gripper_open_);
@@ -277,15 +247,38 @@ bool cw3::pickObj(geometry_msgs::Pose pose)
   std::cout<<"===2 grasp_pose.orientation: "<<approach_pose.orientation.x<<","<<approach_pose.orientation.y<<","<<approach_pose.orientation.z<<std::endl;
   
   grasp_pose.orientation = approach_pose.orientation;
-  approach_pose.position.x = object_point.point.x;
-  approach_pose.position.y = object_point.point.y;
-  grasp_pose.position.x = object_point.point.x;
-  grasp_pose.position.y = object_point.point.y;
   success *= moveArm(approach_pose);
   if (not success) 
   {
     ROS_ERROR("Moving arm to grasping pose failed");
   }
+  transform_matrix = tfTransform(target_frame, camera_frame);
+
+  Eigen::Quaterniond quaternion(transform_matrix.transform.rotation.w,
+                                   transform_matrix.transform.rotation.x,
+                                   transform_matrix.transform.rotation.y,
+                                   transform_matrix.transform.rotation.z);
+  // -> wrold
+  
+  tf2::doTransform(object_point, object_point, transform_matrix);
+  if (shape_type == "cross") 
+  {
+    approach_pose.position.x = object_point.point.x + 1.5*length;
+    approach_pose.position.y = object_point.point.y;
+  }
+  else{
+    approach_pose.position.x = object_point.point.x;
+    approach_pose.position.y = object_point.point.y + 1.5*length;
+  }
+  grasp_pose.position.x = approach_pose.position.x;
+  grasp_pose.position.y = approach_pose.position.y;
+  
+  success *= moveArm(approach_pose);
+  if (not success) 
+  {
+    ROS_ERROR("Moving arm to grasping pose failed");
+  }
+  
   success *= moveArm(grasp_pose);
   if (not success) 
   {
@@ -395,7 +388,7 @@ void cw3::imageCallback(const sensor_msgs::PointCloud2ConstPtr &cloud_input_msg)
 
   
   // downsize the cloud for faster and more efficient analysis with a filter
-  voxel_grid.setLeafSize(0.001f, 0.001f, 0.95f); // Set leaf size 
+  voxel_grid.setLeafSize(0.0001f, 0.0001f, 0.95f); // Set leaf size 
   voxel_grid.setInputCloud(image_data_cloud_origin); 
   voxel_grid.filter(*image_data_cloud_downsize);
   if (image_data_cloud_downsize->size() == 0) {
@@ -411,7 +404,7 @@ void cw3::imageCallback(const sensor_msgs::PointCloud2ConstPtr &cloud_input_msg)
   geometry_msgs::PointStamped point_out;
   // Create a shared pointer to store the point cloud of the current cluster.
   boost::shared_ptr<pcl::PointCloud<pcl::PointXYZ>> clusters(new pcl::PointCloud<pcl::PointXYZ>);
-  calOrientation(image_data_cloud_origin, image_data_cloud_no_plane);
+  calOrientation(image_data_cloud_downsize, image_data_cloud_no_plane);
   if (image_data_cloud_no_plane->size() == 0) {
     ROS_ERROR("image_data_cloud_no_plane is empty. %ld", image_data_cloud_no_plane->size());
     return;
@@ -430,72 +423,21 @@ void cw3::imageCallback(const sensor_msgs::PointCloud2ConstPtr &cloud_input_msg)
 
   // Save the point cloud to a PCD file
   std::vector<pcl::PointIndices> cluster_indices_baskets_temp;
-  ROS_INFO("====================== CALL BACK %ld, %ld", image_data_cloud_origin->size(), image_data_cloud_downsize->size());
+  ROS_INFO("====================== CALL BACK %ld, %ld, %d", image_data_cloud_origin->size(), image_data_cloud_downsize->size(), image_data_cloud_no_plane->size());
   
   // 旋转矩阵->角度
   // Eigen::Vector3d eulerAngle=rotated_rotation.eulerAngles(0,1,2);
   // 输出世界坐标系下的四元数
   pcl::compute3DCentroid(*image_data_cloud_no_plane, centroid);
-  // std::cout<<"===========centroid"<<centroid[0]<<", "<<centroid[1]<<", "<<centroid[2]<<std::endl;
+
+
+  std::cout<<"Angles:"<<angle<<", "<<angle_new<<std::endl;
   
-  auto min_y_point = std::max_element(image_data_cloud_no_plane->begin(), image_data_cloud_no_plane->end(),
-                                      [](const pcl::PointXYZ& p1, const pcl::PointXYZ& p2) {
-                                          return p1.y   < p2.y;
-                                      });
-  auto max_y_point = std::max_element(image_data_cloud_no_plane->begin(), image_data_cloud_no_plane->end(),
-                                      [](const pcl::PointXYZ& p1, const pcl::PointXYZ& p2) {
-                                          return p1.y > p2.y;
-                                      });
-  auto min_x_point = std::max_element(image_data_cloud_no_plane->begin(), image_data_cloud_no_plane->end(),
-                                      [](const pcl::PointXYZ& p1, const pcl::PointXYZ& p2) {
-                                          return p1.x < p2.x;
-                                      });
-  auto max_x_point = std::max_element(image_data_cloud_no_plane->begin(), image_data_cloud_no_plane->end(),
-                                      [](const pcl::PointXYZ& p1, const pcl::PointXYZ& p2) {
-                                          return p1.x > p2.x;
-                                      });
-  min_y_p = min_y_point -> y;
-  max_y_p = max_y_point -> y;
-  min_x_p = min_x_point -> x;
-  max_x_p = max_x_point -> x;
-
-
+  ROS_INFO("===CALCULATED ANGLE all: (%f)", (angle) * (180/pi_));
+  ROS_INFO("===CALCULATED ANGLE new: (%f)", (angle_new) * (180/pi_));
   
-
   
-  // 输出各轴方向角度
-  if(shape_type == "cross")
-  {
-    pcl::PassThrough<pcl::PointXYZ> pass;
-
-    std::cout<<"!!!min_y_point="<<min_y_point->x<<min_y_point->y<<min_y_point->z<<"; max_y_point="<<max_y_point->x<<max_y_point->y<<max_y_point->z<<std::endl;
-    
-    std::cout<<"X:"<<angle<<std::endl;
-    ROS_INFO("===CALCULATED ANGLE ALL: (%f)", (angle) * (180/pi_));
-
-    centroid[1] += 1.5*length;
-
-  }else{
-    boost::shared_ptr<pcl::PointCloud<pcl::PointXYZ>> image_data_cloud_x(new pcl::PointCloud<pcl::PointXYZ>);
-    angle_new += angle_offset_;
-    // if (std::abs(min_y_p - max_y_p) < 5.01*length && std::abs(min_x_p - max_x_p) < 5.01*length) 
-    // {
-    //   if (angle_new > pi_/4){
-    //     angle_new -= pi_/2;
-    //   } else if (angle_new < -pi_/4){
-    //     angle_new += pi_/2;
-    //   }
-    // }else{
-    //   if (angle_new < pi_/4){
-    //     angle_new -= pi_/2;
-    //   } else if (angle_new > -pi_/4){
-    //     angle_new += pi_/2;
-    //   }
-    // }
-    double pi_ = 3.14159;
-    centroid[0] += 2*length;
-
-  }
+  double pi_ =3.14159;
 
   // Remove obtuse angles
   if (angle_new > pi_/2){
@@ -503,20 +445,29 @@ void cw3::imageCallback(const sensor_msgs::PointCloud2ConstPtr &cloud_input_msg)
   } else if (angle_new < -pi_/2){
     angle_new += pi_;
   }
-  // Minimise rotation to +- 45 degrees
+ 
   if (angle_new > pi_/4){
     angle_new -= pi_/2;
   } else if (angle_new < -pi_/4){
     angle_new += pi_/2;
   }
-  angle -= angle_new;
+
+
+  angle += angle_new;
   if (angle > pi_/2){
     angle -= pi_;
   } else if (angle < -pi_/2){
     angle += pi_;
   }
-  ROS_INFO("===CALCULATED ANGLE all: (%f)", (angle) * (180/pi_));
-  ROS_INFO("===CALCULATED ANGLE new: (%f)", (angle_new) * (180/pi_));
+  // // 输出各轴方向角度
+  // if(shape_type == "cross")
+  // {
+  //   // if (angle_new > )
+  //   centroid[0] += 1.6*length;
+
+  // }else{
+  //   centroid[1] += 2*length;
+  // }
   tf2::Quaternion q_x180deg(-1, 0, 0, 0);
 
   // determine the grasping orientation
@@ -527,7 +478,6 @@ void cw3::imageCallback(const sensor_msgs::PointCloud2ConstPtr &cloud_input_msg)
   // 将 tf2::Quaternion 转换为 Eigen::Quaterniond
   Eigen::Quaterniond obj_quaternion(q_result.w(), q_result.x(), q_result.y(), q_result.z());
 
-  std::cout<<"=====angle_offset_"<<angle<<std::endl;
   
   // 物体的旋转
   Eigen::Matrix3d quaternion_obj_rotation_matrix = obj_quaternion.normalized().toRotationMatrix();
@@ -549,19 +499,26 @@ void cw3::imageCallback(const sensor_msgs::PointCloud2ConstPtr &cloud_input_msg)
   // 将结果旋转矩阵转换为四元数
   tf2::Quaternion tf_quaternion_obj_rotation_matrix(eigen_x, eigen_y, eigen_z, eigen_w);
   tf2::convert(tf_quaternion_obj_rotation_matrix, msg_rotated_quaternion_camera.transform.rotation);
+  // 
   tf2::doTransform(centroid_point.point, centroid_point_rotated.point, msg_rotated_quaternion_camera);
 
-  // geometry_msgs/Quaternion rotation 四元数形式
-  // 四元数：target_frame ~ camera_frame
-  transform_matrix = tfTransform(target_frame, camera_frame);
+  // // geometry_msgs/Quaternion rotation 四元数形式
+  // // 四元数：target_frame ~ camera_frame
+  // transform_matrix = tfTransform(target_frame, camera_frame);
 
-  Eigen::Quaterniond quaternion(transform_matrix.transform.rotation.w,
-                                   transform_matrix.transform.rotation.x,
-                                   transform_matrix.transform.rotation.y,
-                                   transform_matrix.transform.rotation.z);
-  // -> wrold
-  tf2::doTransform(centroid_point_rotated.point, point_out.point, transform_matrix);
-  object_point = point_out;
+  // Eigen::Quaterniond quaternion(transform_matrix.transform.rotation.w,
+  //                                  transform_matrix.transform.rotation.x,
+  //                                  transform_matrix.transform.rotation.y,
+  //                                  transform_matrix.transform.rotation.z);
+  // // -> wrold
+  // tf2::doTransform(centroid_point_rotated.point, point_out.point, transform_matrix);
+  // object_point = point_out;
+
+  // point_in.header.stamp = ros::Time::now();
+    // geometry_msgs/Quaternion rotation 四元数形式
+  // 四元数：target_frame ~ camera_frame
+  
+  object_point.point = centroid_point_rotated.point;
 
   point_in.header.stamp = ros::Time::now();
   sub_flag_task1 = false;
@@ -592,7 +549,6 @@ bool cw3::task1Move(geometry_msgs::PointStamped pick_point, geometry_msgs::Point
 
   std::cout<<"---------------- pick before----"<<angle<<std::endl;
   transform_matrix = tfTransform(target_frame, camera_frame);
-  std::cout<<"=======pp point_out:"<< transform_matrix.transform.rotation.x<<","<<transform_matrix.transform.rotation.y<<","<<transform_matrix.transform.rotation.z<<std::endl;
   angle = 0; 
   sub_flag_task1 = true;
   ros::Duration(0.1).sleep();
@@ -600,11 +556,20 @@ bool cw3::task1Move(geometry_msgs::PointStamped pick_point, geometry_msgs::Point
   {
     ros::Duration(0.1).sleep();
   }
-  std::cout<<"======= before orientation:"<< orientation.x<<","<<orientation.y<<","<<orientation.z<<std::endl;
 
   success = pickObj(getPose(pick_point));
-  // success *= dropObj(getPose(goal_point));
+  if (shape_type == "cross")  goal_point.point.x += 2*length;
+  else{
+    if (goal_point.point.y > 0) goal_point.point.y += 2*length;
+    if (goal_point.point.y < 0) goal_point.point.y -= 2*length;
 
+  }
+  success *= dropObj(getPose(goal_point));
+  success *= moveArm(view_pose);
+  if (not success) 
+  {
+    ROS_ERROR("Moving arm to grasping pose failed");
+  }
   return success;
 }
 
@@ -663,7 +628,7 @@ void cw3::calOrientation(const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud, const
   seg.setOptimizeCoefficients (true);
   seg.setModelType (pcl::SACMODEL_PLANE);
   seg.setMethodType (pcl::SAC_RANSAC);
-  seg.setDistanceThreshold (0.03);
+  seg.setDistanceThreshold (0.0325);
   seg.setMaxIterations(1000);
   seg.setInputCloud(cloud);
   seg.segment (*plane_inliers, *plane_coefficients);
@@ -673,19 +638,21 @@ void cw3::calOrientation(const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud, const
   extract.setIndices(plane_inliers);
   extract.setNegative(true);
   // Remove the planar inliers, extract the rest
-  extract.filter(*cloud_filtered);
-  if (cloud_filtered->size() == 0)
+  extract.filter(*cloud_out);
+  if (cloud_out->size() == 0)
   {
     ROS_WARN("cloud_out has no data");
   }
-  pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;
-  sor.setInputCloud (cloud_filtered);                    
-  sor.setMeanK (50);                               
-  sor.setStddevMulThresh (0.9);                    
-  sor.filter (*cloud_out);                  
-    
+  // pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;
+  // sor.setInputCloud (cloud_filtered);                    
+  // sor.setMeanK (50);                               
+  // sor.setStddevMulThresh (0.9);                    
+  // sor.filter (*cloud_out);                  
+  for (auto& point : cloud_out->points) {
+    point.z = 0.0;
+  }
   pcl::PCDWriter writer;
-  // writer.write<pcl::PointXYZ>("/home/mhj/Desktop/no_plane_image_cloud.pcd", *cloud_out, false);  
+  writer.write<pcl::PointXYZ>("/home/mhj/Desktop/no_plane_image_cloud.pcd", *cloud_out, false);  
   // writer.write<pcl::PointXYZ>("/home/mhj/Desktop/cloud_filtered.pcd", *cloud_filtered, false);  
   
   
@@ -700,20 +667,22 @@ void cw3::calOrientation(const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud, const
   pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
   pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
 
+
   // 设置分割参数
   seg.setOptimizeCoefficients(true);
   seg.setModelType(pcl::SACMODEL_LINE);
   seg.setMethodType(pcl::SAC_RANSAC);
   seg.setMaxIterations(1000);
-  seg.setDistanceThreshold(0.04);
-
+  seg.setDistanceThreshold(0.03);
+  // seg.setAxis(Eigen::Vector3f(0, 0, 1)); // 设置忽略 Z 轴数据
   // 执行分割
   seg.setInputCloud(cloud_out);
   seg.segment(*inliers, *coefficients);
-
+  std::cout<<inliers->indices.size()<<coefficients->values.size();
   // 提取拟合的直线上的点
   extract.setInputCloud(cloud_out);
   extract.setIndices(inliers);
+  extract.setNegative(false);
   extract.filter(*line_cloud);
 
   // 将拟合的直线点云和原始点云合并
@@ -733,10 +702,10 @@ void cw3::calOrientation(const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud, const
   viewer->addPointCloud<pcl::PointXYZ>(cloud_out, color_cloud, "original_cloud");
   viewer->addPointCloud<pcl::PointXYZ>(line_cloud, color_line, "line_cloud");
   // 计算拟合直线的斜率
-  float slope = coefficients->values[3] / coefficients->values[4];
+  slope = coefficients->values[4] / coefficients->values[3];
 
   // 计算拟合直线的旋转角度（弧度）
-  float angle_new = atan(slope);
+  angle_new = atan(slope);
 
   // 将弧度转换为角度
   float angle_deg = angle_new * 180.0 / M_PI;
@@ -757,9 +726,10 @@ void cw3::calOrientation(const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud, const
 
   // 显示可视化窗口
   // while (!viewer->wasStopped()) {
-  //     viewer->spinOnce();
-  // }
-  // pcl::io::savePCDFile("/home/mhj/Desktop/merged_cloud.pcd", *plane_removed_cloud);
+      // viewer->spinOnce();
+  // }s
+  pcl::io::savePCDFile("/home/mhj/Desktop/merged_cloud.pcd", *plane_removed_cloud);
+  pcl::io::savePCDFile("/home/mhj/Desktop/line_cloud.pcd", *line_cloud);
   
 
   ROS_INFO("===CALCULATED ANGLE: (%f)", (angle_new) * (180/pi_));
@@ -813,6 +783,24 @@ void cw3::add_plane()
   plane_orientation.y = 0;
   plane_orientation.z = 0;
   addCollision("plane", plane_centre, plane_dimension, plane_orientation);
+
+
+
+  // ///////////////
+  // geometry_msgs::Point robot_centre; // plane centre
+  // robot_centre.x = 0.2;
+  // robot_centre.y = 0;
+  // robot_centre.z = 0.25;                  // derive from cube center position and dimension
+  // geometry_msgs::Vector3 robot_dimension; // plane position
+  // robot_dimension.x = 0.02;
+  // robot_dimension.y = 0.25;
+  // robot_dimension.z = 0.15;
+  // geometry_msgs::Quaternion robot_orientation; // plane orientation
+  // robot_orientation.w = 1;
+  // robot_orientation.x = 0;
+  // robot_orientation.y = 0;
+  // robot_orientation.z = 0;
+  // addCollision("robot", robot_centre, robot_dimension, robot_orientation);
 }
 
 void cw3::addCollision(std::string object_name, geometry_msgs::Point centre, 
