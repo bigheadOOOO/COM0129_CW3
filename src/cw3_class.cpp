@@ -411,19 +411,20 @@ void cw3::imageCallback(const sensor_msgs::PointCloud2ConstPtr &cloud_input_msg)
   geometry_msgs::PointStamped point_out;
   // Create a shared pointer to store the point cloud of the current cluster.
   boost::shared_ptr<pcl::PointCloud<pcl::PointXYZ>> clusters(new pcl::PointCloud<pcl::PointXYZ>);
-  calOrientation(image_data_cloud_downsize, image_data_cloud_no_plane);
+  calOrientation(image_data_cloud_origin, image_data_cloud_no_plane);
   if (image_data_cloud_no_plane->size() == 0) {
     ROS_ERROR("image_data_cloud_no_plane is empty. %ld", image_data_cloud_no_plane->size());
     return;
   }
 
-  // pcl::PCDWriter writer;
-  // writer.write<pcl::PointXYZ>("/home/mhj/Desktop/image_data_cloud.pcd", *image_data_cloud_origin, false);
-  // writer.write<pcl::PointXYZ>("/home/mhj/Desktop/image_data_cloud_no_plane.pcd", *image_data_cloud_no_plane, false);
+  pcl::PCDWriter writer;
+  writer.write<pcl::PointXYZ>("/home/mhj/Desktop/image_data_cloud.pcd", *image_data_cloud_origin, false);
+  writer.write<pcl::PointXYZ>("/home/mhj/Desktop/image_data_cloud_no_plane.pcd", *image_data_cloud_no_plane, false);
 
-  // writer.write<pcl::PointXYZ>("/home/mhj/Desktop/image_data_cloud_downsize.pcd", *image_data_cloud_downsize, false);
+  writer.write<pcl::PointXYZ>("/home/mhj/Desktop/image_data_cloud_downsize.pcd", *image_data_cloud_downsize, false);
   
   
+
   // Create the filtering object
   // filter out ground points
 
@@ -687,18 +688,79 @@ void cw3::calOrientation(const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud, const
   writer.write<pcl::PointXYZ>("/home/mhj/Desktop/no_plane_image_cloud.pcd", *cloud_out, false);  
   writer.write<pcl::PointXYZ>("/home/mhj/Desktop/cloud_filtered.pcd", *cloud_filtered, false);  
   
-  // PCL feature extractor to obtain object orientation
-  pcl::MomentOfInertiaEstimation <pcl::PointXYZ> feature_extractor;
-  feature_extractor.setInputCloud (cloud_out);
-  feature_extractor.compute ();
-  // Determine Object Axis
-  Eigen::Vector3f major_vector, middle_vector, minor_vector, use_vector;
-  feature_extractor.getEigenVectors (major_vector, middle_vector, minor_vector);
-  double dot, det;
-  dot = middle_vector(1);
-  det = middle_vector(0);
   
-  angle_new = atan2(det,dot);
+
+  // 创建点云对象，用于存储拟合的直线点
+  pcl::PointCloud<pcl::PointXYZ>::Ptr line_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+
+  // 创建点云对象，用于存储去除平面之后的点云
+  pcl::PointCloud<pcl::PointXYZ>::Ptr plane_removed_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+
+  // 创建分割对象
+  pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
+  pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
+
+  // 设置分割参数
+  seg.setOptimizeCoefficients(true);
+  seg.setModelType(pcl::SACMODEL_LINE);
+  seg.setMethodType(pcl::SAC_RANSAC);
+  seg.setMaxIterations(1000);
+  seg.setDistanceThreshold(0.04);
+
+  // 执行分割
+  seg.setInputCloud(cloud_out);
+  seg.segment(*inliers, *coefficients);
+
+  // 提取拟合的直线上的点
+  extract.setInputCloud(cloud_out);
+  extract.setIndices(inliers);
+  extract.filter(*line_cloud);
+
+  // 将拟合的直线点云和原始点云合并
+  *plane_removed_cloud = *cloud_out + *line_cloud;
+
+  // 保存合并后的点云
+  // 创建可视化对象
+  pcl::visualization::PCLVisualizer::Ptr viewer(new pcl::visualization::PCLVisualizer("3D Viewer"));
+  viewer->setBackgroundColor(0, 0, 0);
+  viewer->addCoordinateSystem(1.0);
+  viewer->initCameraParameters();
+  // 设置点云颜色
+  pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> color_cloud(cloud_out, 255, 255, 255); // 白色
+  pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> color_line(line_cloud, 255, 0, 0); // 红色
+
+  // 添加点云到可视化对象中，并设置颜色
+  viewer->addPointCloud<pcl::PointXYZ>(cloud_out, color_cloud, "original_cloud");
+  viewer->addPointCloud<pcl::PointXYZ>(line_cloud, color_line, "line_cloud");
+  // 计算拟合直线的斜率
+  float slope = coefficients->values[3] / coefficients->values[4];
+
+  // 计算拟合直线的旋转角度（弧度）
+  float angle_new = atan(slope);
+
+  // 将弧度转换为角度
+  float angle_deg = angle_new * 180.0 / M_PI;
+
+  std::cout << "拟合直线的旋转角度（度）：" << angle_deg << std::endl;
+
+  // 添加拟合直线到可视化对象中
+  pcl::PointXYZ p1, p2;
+  p1.x = coefficients->values[0] - 10.0;
+  p1.y = coefficients->values[1] - 10.0 * slope;
+  p1.z = coefficients->values[2] - 10.0;
+
+  p2.x = coefficients->values[0] + 10.0;
+  p2.y = coefficients->values[1] + 10.0 * slope;
+  p2.z = coefficients->values[2] + 10.0;
+
+  viewer->addLine(p1, p2, 0, 1, 0, "fitting_line");
+
+  // 显示可视化窗口
+  // while (!viewer->wasStopped()) {
+  //     viewer->spinOnce();
+  // }
+  pcl::io::savePCDFile("/home/mhj/Desktop/merged_cloud.pcd", *plane_removed_cloud);
+  
 
   ROS_INFO("===CALCULATED ANGLE: (%f)", (angle_new) * (180/pi_));
 
@@ -744,7 +806,7 @@ void cw3::add_plane()
   geometry_msgs::Vector3 plane_dimension; // plane position
   plane_dimension.x = 5;
   plane_dimension.y = 5;
-  plane_dimension.z = 0.015;
+  plane_dimension.z = 0.01;
   geometry_msgs::Quaternion plane_orientation; // plane orientation
   plane_orientation.w = 1;
   plane_orientation.x = 0;
