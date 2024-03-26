@@ -40,7 +40,6 @@ solution is contained within the cw3_team_<your_team_number> package */
 #include <Eigen/Geometry>
 #include <tf/transform_listener.h>
 #include <pcl/filters/voxel_grid.h>
-#include <pcl/filters/extract_indices.h>
 #include <pcl/segmentation/sac_segmentation.h>
 #include <pcl/features/moment_of_inertia_estimation.h>
 #include <pcl/filters/statistical_outlier_removal.h>
@@ -130,6 +129,7 @@ public:
   double angle_offset_ = 3.14159 / 4.0;
   double angle = 0;
   double angle_new = 0;
+  float slope;
 
   // double approach_distance_basket = 0.205;
   double approach_distance_basket = 0.155;
