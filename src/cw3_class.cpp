@@ -302,8 +302,8 @@ bool cw3::pickObj(geometry_msgs::Pose pose)
     approach_pose.position.y = object_point.point.y;
   }
   else{
-    approach_pose.position.x = object_point.point.x - 0.01;
-    approach_pose.position.y = object_point.point.y + 2.01*length;
+    approach_pose.position.x = object_point.point.x;
+    approach_pose.position.y = object_point.point.y + 2*length;
   }
   grasp_pose.position.x = approach_pose.position.x;
   grasp_pose.position.y = approach_pose.position.y;
@@ -729,7 +729,7 @@ void cw3::calOrientation(const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud, const
   seg.setModelType(pcl::SACMODEL_LINE);
   seg.setMethodType(pcl::SAC_RANSAC);
   seg.setMaxIterations(1000);
-  seg.setDistanceThreshold(0.03);
+  seg.setDistanceThreshold(0.02);
   // seg.setAxis(Eigen::Vector3f(0, 0, 1)); // 设置忽略 Z 轴数据
   // 执行分割
   seg.setInputCloud(cloud_out);
