@@ -48,6 +48,21 @@ cw3::t1_callback(cw3_world_spawner::Task1Service::Request &request,
 {
   /* function which should solve task 1 */
 
+  geometry_msgs::Pose view_pose;
+  tfCallback();
+  view_pose.position.z = 0.5;
+
+  view_pose.position.x = 0.2;
+  view_pose.position.y = 0;
+  
+  view_pose.orientation = orientation;
+  
+  /* Now perform the pick */
+  bool success = true;
+  ROS_INFO("Begining pick operation");
+  // move the arm above the object
+  success = moveArm(view_pose);
+  if (!success) ROS_WARN("move not success"); 
   ROS_INFO("The coursework solving callback for task 1 has been triggered");
   
   // Collect message in the service
@@ -102,7 +117,7 @@ geometry_msgs::Pose cw3::getPose(geometry_msgs::PointStamped target_point)
   geometry_msgs::Pose pose;
   pose.position.x = point.x - translation_hand_camera_x;
   pose.position.y = point.y - translation_hand_camera_y;
-  pose.position.z = point.z; // - translation_hand_camera_z;
+  pose.position.z = point.z - translation_hand_camera_z;
 
   pose.orientation = getOrientation();
   std::cout<<"======= after orientation:"<< pose.orientation.x<<","<<pose.orientation.y<<","<<pose.orientation.z<<std::endl;
@@ -127,33 +142,53 @@ bool cw3::moveArm(geometry_msgs::Pose target_pose)
   // waypoints.push_back(target_pose);
 
   // // 设置笛卡尔路径规划参数
-  // moveit_msgs::RobotTrajectory trajectory;
-  // const double jump_threshold = 0.005;
-  // const double eef_step = 0.01;
-  // bool success = arm_group_.computeCartesianPath(waypoints, eef_step, jump_threshold, trajectory);
-  // if (!success)
-  // {
-  //   ROS_WARN("Trajectory fail.");
-  // }
-  // // 执行路径规划
-  // moveit::planning_interface::MoveGroupInterface::Plan my_plan;
-  // my_plan.trajectory_ = trajectory;
-  // arm_group_.execute(my_plan);
+  std::vector<geometry_msgs::Pose> waypoints;
+  waypoints.push_back(target_pose); // 添加抓取目标姿态
+  // 添加更多的路径点，用于描述笛卡尔路径
 
-  // setup the target pose
-  ROS_INFO("Setting pose target");
-  arm_group_.setPoseTarget(target_pose);
+  // 执行笛卡尔路径规划
+  double eef_step = 0.01; // 设置步长
+  double jump_threshold = 0.0; // 设置跳跃阈值
+  moveit_msgs::RobotTrajectory trajectory;
+  bool avoid_collisions = true;
+  moveit_msgs::MoveItErrorCodes error_code;
 
-  // create a movement plan for the arm
-  ROS_INFO("Attempting to plan the path");
-  moveit::planning_interface::MoveGroupInterface::Plan my_plan;
-  bool success = (arm_group_.plan(my_plan) ==
-    moveit::planning_interface::MoveItErrorCode::SUCCESS);
+  // 进行笛卡尔路径规划
+  bool success = arm_group_.computeCartesianPath({target_pose}, eef_step, jump_threshold, trajectory, avoid_collisions);
 
-  ROS_INFO("Visualising plan %s", success ? "" : "FAILED");
+  // bool success = arm_group_.computeCartesianPath(waypoints, eef_step, jump_threshold, trajectory, avoid_collisions, &error_code);
 
-  // execute the planned path
-  arm_group_.move();
+  // 检查规划结果
+  if (success) {
+      ROS_INFO("Cartesian path planning succeeded");
+      
+      // 创建运动计划
+      moveit::planning_interface::MoveGroupInterface::Plan cartesian_plan;
+      cartesian_plan.trajectory_ = trajectory;
+
+      // 可视化规划结果
+      ROS_INFO("Visualizing Cartesian path plan");
+      arm_group_.execute(cartesian_plan);
+  } else {
+    ROS_ERROR("Cartesian path planning failed with error code %d", error_code.val);
+    // setup the target pose
+    ROS_INFO("Setting pose target");
+    arm_group_.setPoseTarget(target_pose);
+
+    // create a movement plan for the arm
+    ROS_INFO("Attempting to plan the path");
+    moveit::planning_interface::MoveGroupInterface::Plan my_plan;
+    bool success = (arm_group_.plan(my_plan) ==
+      moveit::planning_interface::MoveItErrorCode::SUCCESS);
+
+    ROS_INFO("Visualising plan %s", success ? "" : "FAILED");
+
+    // execute the planned path
+    arm_group_.move();
+  }
+
+
+  
 
   return success;
 
@@ -263,12 +298,12 @@ bool cw3::pickObj(geometry_msgs::Pose pose)
   tf2::doTransform(object_point, object_point, transform_matrix);
   if (shape_type == "cross") 
   {
-    approach_pose.position.x = object_point.point.x + 1.5*length;
+    approach_pose.position.x = object_point.point.x + 1.4*length;
     approach_pose.position.y = object_point.point.y;
   }
   else{
-    approach_pose.position.x = object_point.point.x;
-    approach_pose.position.y = object_point.point.y + 1.5*length;
+    approach_pose.position.x = object_point.point.x - 0.01;
+    approach_pose.position.y = object_point.point.y + 2.01*length;
   }
   grasp_pose.position.x = approach_pose.position.x;
   grasp_pose.position.y = approach_pose.position.y;
@@ -308,14 +343,32 @@ bool cw3::dropObj(geometry_msgs::Pose pose)
   geometry_msgs::Pose drop_pose;
   drop_pose = pose;
   drop_pose.position.z += approach_distance_basket;
-  drop_pose.position.z += z_offset_obj;
-
+  drop_pose.position.z += z_offset_obj+3*length;
+  // drop middile pose
+  drop_pose.position.x *= -1;
   // move arm to drop pose: plus cube_length to avoid the box collide with the basket
   int success = moveArm(drop_pose); 
   if (not success) 
   {
     ROS_ERROR("Retreating arm after picking failed. move arm to drop pose");
-    drop_pose.position.z += 0.05;
+  }
+  // approach pose
+  drop_pose.position.x *= -1;
+  drop_pose.position.z -= length;
+  success = moveArm(drop_pose); 
+  if (not success) 
+  {
+    ROS_ERROR("Retreating arm after picking failed. move arm to drop pose");
+    // move arm to drop pose
+    success = moveArm(drop_pose); 
+  }
+
+  // drop pose
+  drop_pose.position.z -= 3*length;
+  success = moveArm(drop_pose); 
+  if (not success) 
+  {
+    ROS_ERROR("Retreating arm after picking failed. move arm to drop pose");
     // move arm to drop pose
     success = moveArm(drop_pose); 
   }
@@ -329,7 +382,8 @@ bool cw3::dropObj(geometry_msgs::Pose pose)
     return false;
   }
   // leave the basket: get higher to avoid collide during movement
-  drop_pose.position.z += basket_h;
+  drop_pose.position.z += basket_h+approach_distance_basket+2.5*length;
+  drop_pose.position.x *= -1;
   success *= moveArm(drop_pose);
   if (not success) 
   {
@@ -353,7 +407,6 @@ void cw3::extractObjectsClusters(pcl::PointCloud<pcl::PointXYZ>::Ptr color_cloud
   ec.setMinClusterSize(min_cluster_size);     // Set the minimum number of points in a cluster
   ec.setMaxClusterSize(max_cluster_size);     // Set the maximum number of points in a cluster
   ec.extract(cluster_indices);                // Extracting and storing the indices of the clustered point cloud
-  ROS_INFO("``````````````````cluster_indices %d", cluster_indices.size());
 }
 
 
@@ -454,11 +507,16 @@ void cw3::imageCallback(const sensor_msgs::PointCloud2ConstPtr &cloud_input_msg)
 
 
   angle += angle_new;
-  if (angle > pi_/2){
-    angle -= pi_;
-  } else if (angle < -pi_/2){
-    angle += pi_;
-  }
+  // if (angle > pi_/2){
+  //   angle -= pi_;
+  // } else if (angle < -pi_/2){
+  //   angle += pi_;
+  // }
+  // if (angle > pi_/4){
+  //   angle -= pi_/2;
+  // } else if (angle < -pi_/4){
+  //   angle += pi_/2;
+  // }
   // // 输出各轴方向角度
   // if(shape_type == "cross")
   // {
@@ -558,18 +616,16 @@ bool cw3::task1Move(geometry_msgs::PointStamped pick_point, geometry_msgs::Point
   }
 
   success = pickObj(getPose(pick_point));
-  if (shape_type == "cross")  goal_point.point.x += 2*length;
+  if (shape_type == "cross")  goal_point.point.x += 1.4*length;
   else{
-    if (goal_point.point.y > 0) goal_point.point.y += 2*length;
-    if (goal_point.point.y < 0) goal_point.point.y -= 2*length;
-
+    goal_point.point.x -= length/2;
+    goal_point.point.y += 2*length;
   }
+  angle = 0; 
+  translation_hand_camera_x = 0;
+  translation_hand_camera_y = 0;
   success *= dropObj(getPose(goal_point));
-  success *= moveArm(view_pose);
-  if (not success) 
-  {
-    ROS_ERROR("Moving arm to grasping pose failed");
-  }
+
   return success;
 }
 
@@ -690,17 +746,17 @@ void cw3::calOrientation(const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud, const
 
   // 保存合并后的点云
   // 创建可视化对象
-  pcl::visualization::PCLVisualizer::Ptr viewer(new pcl::visualization::PCLVisualizer("3D Viewer"));
-  viewer->setBackgroundColor(0, 0, 0);
-  viewer->addCoordinateSystem(1.0);
-  viewer->initCameraParameters();
-  // 设置点云颜色
-  pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> color_cloud(cloud_out, 255, 255, 255); // 白色
-  pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> color_line(line_cloud, 255, 0, 0); // 红色
+  // pcl::visualization::PCLVisualizer::Ptr viewer(new pcl::visualization::PCLVisualizer("3D Viewer"));
+  // viewer->setBackgroundColor(0, 0, 0);
+  // viewer->addCoordinateSystem(1.0);
+  // viewer->initCameraParameters();
+  // // 设置点云颜色
+  // pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> color_cloud(cloud_out, 255, 255, 255); // 白色
+  // pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> color_line(line_cloud, 255, 0, 0); // 红色
 
   // 添加点云到可视化对象中，并设置颜色
-  viewer->addPointCloud<pcl::PointXYZ>(cloud_out, color_cloud, "original_cloud");
-  viewer->addPointCloud<pcl::PointXYZ>(line_cloud, color_line, "line_cloud");
+  // viewer->addPointCloud<pcl::PointXYZ>(cloud_out, color_cloud, "original_cloud");
+  // viewer->addPointCloud<pcl::PointXYZ>(line_cloud, color_line, "line_cloud");
   // 计算拟合直线的斜率
   slope = coefficients->values[4] / coefficients->values[3];
 
@@ -722,7 +778,7 @@ void cw3::calOrientation(const pcl::PointCloud<pcl::PointXYZ>::Ptr& cloud, const
   p2.y = coefficients->values[1] + 10.0 * slope;
   p2.z = coefficients->values[2] + 10.0;
 
-  viewer->addLine(p1, p2, 0, 1, 0, "fitting_line");
+  // viewer->addLine(p1, p2, 0, 1, 0, "fitting_line");
 
   // 显示可视化窗口
   // while (!viewer->wasStopped()) {
@@ -784,23 +840,6 @@ void cw3::add_plane()
   plane_orientation.z = 0;
   addCollision("plane", plane_centre, plane_dimension, plane_orientation);
 
-
-
-  // ///////////////
-  // geometry_msgs::Point robot_centre; // plane centre
-  // robot_centre.x = 0.2;
-  // robot_centre.y = 0;
-  // robot_centre.z = 0.25;                  // derive from cube center position and dimension
-  // geometry_msgs::Vector3 robot_dimension; // plane position
-  // robot_dimension.x = 0.02;
-  // robot_dimension.y = 0.25;
-  // robot_dimension.z = 0.15;
-  // geometry_msgs::Quaternion robot_orientation; // plane orientation
-  // robot_orientation.w = 1;
-  // robot_orientation.x = 0;
-  // robot_orientation.y = 0;
-  // robot_orientation.z = 0;
-  // addCollision("robot", robot_centre, robot_dimension, robot_orientation);
 }
 
 void cw3::addCollision(std::string object_name, geometry_msgs::Point centre, 
